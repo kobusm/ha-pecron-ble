@@ -1,5 +1,7 @@
 # Pecron (Bluetooth) for Home Assistant
 
+[![Tests](https://github.com/kobusm/ha-pecron-ble/actions/workflows/tests.yml/badge.svg)](https://github.com/kobusm/ha-pecron-ble/actions/workflows/tests.yml)
+
 Local Bluetooth LE integration for Pecron portable power stations, written with the **E300LFP** in mind. It should also work on other models that advertise as `QUEC_BLE_xxxx`. There is no cloud polling: after a one-time key fetch, everything goes over BLE, either directly from the HA host's adapter or through an ESPHome Bluetooth proxy.
 
 ## How it works
