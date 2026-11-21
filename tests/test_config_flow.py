@@ -178,3 +178,49 @@ async def test_cloud_key_wrong_length_is_explained(hass: HomeAssistant, fake_dev
         result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDS)
     assert result["reason"] == "auth_key_unavailable"
     assert result["description_placeholders"]["error"] == "the key decoded to 20 bytes, expected 16, 24 or 32"
+
+
+def _pecron_local_entry(hass, title, key, device_key=None, mac=None):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    data = {"auth_key": key}
+    if device_key:
+        data["device_key"] = device_key
+    if mac:
+        data["mac"] = mac
+    MockConfigEntry(domain="pecron_local", title=title, data=data).add_to_hass(hass)
+
+
+async def test_reuse_pecron_local_key_matching_e300lfp_macs(hass: HomeAssistant, fake_device):
+    # Real E300LFP: Wi-Fi device key and BLE MAC share only the first 4 bytes.
+    import base64
+
+    other = base64.b64encode(b"\x09" * 16).decode()
+    _pecron_local_entry(hass, "Other station", other, device_key="112233440001")
+    _pecron_local_entry(hass, "Pecron @ 192.168.86.79", AUTH_KEY_B64, device_key="AABBCCDD42F9")
+    result = await _to_menu(hass)
+    assert result["menu_options"][0] == "pecron_local"
+    with patch("custom_components.pecron_ble.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "pecron_local"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {CONF_ADDRESS: ADDRESS, CONF_AUTH_KEY: AUTH_KEY_B64, CONF_DEVICE_KEY: "AABBCCDD42F9"}
+
+
+async def test_reuse_pecron_local_key_lets_user_pick(hass: HomeAssistant, fake_device):
+    import base64
+
+    _pecron_local_entry(hass, "A", base64.b64encode(b"\x09" * 16).decode(), device_key="111111111111")
+    _pecron_local_entry(hass, "B", AUTH_KEY_B64, device_key="222222222222")
+    result = await _to_menu(hass)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "pecron_local"})
+    assert result["step_id"] == "pecron_local"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"entry": "A"})
+    assert result["errors"] == {"base": "invalid_auth"}  # wrong key is caught by the BLE login
+    with patch("custom_components.pecron_ble.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"entry": "B"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_no_pecron_local_option_without_entries(hass: HomeAssistant, fake_device):
+    result = await _to_menu(hass)
+    assert result["menu_options"] == ["cloud", "manual"]

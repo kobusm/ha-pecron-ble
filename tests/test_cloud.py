@@ -37,5 +37,12 @@ async def test_auth_key_ok_without_key_raises():
     with pytest.raises(CloudError, match="no authKey"):
         await cloud.auth_key(CloudDevice("x", "pk", "dk"))
     cloud._json = AsyncMock(return_value={"code": 5032, "msg": "No permission"})
-    with pytest.raises(CloudError, match="code 5032: No permission"):
+    with pytest.raises(CloudError, match="code 5032; No permission"):
         await cloud.auth_key(CloudDevice("x", "pk", "dk"))
+
+
+def test_describe_failure_without_code():
+    from custom_components.pecron_ble.cloud import describe_failure
+
+    msg = describe_failure({"_http_status": 404, "timestamp": 1, "error": "Not Found", "path": "/x"})
+    assert msg == "HTTP 404; Not Found; reply fields: error, path, timestamp"

@@ -20,6 +20,7 @@
       "auth_method": {
         "description": "The power station encrypts its Bluetooth link with a per-device auth key. It is only available from Pecron's cloud. Fetch it once with your Pecron app login (the password is not stored), or paste a key you already have.",
         "menu_options": {
+          "pecron_local": "Reuse the key from the Pecron Local integration",
           "cloud": "Sign in to Pecron once to fetch the key",
           "manual": "Enter the auth key manually"
         }
@@ -42,6 +43,12 @@
         "description": "Base64 auth key (decodes to 16, 24 or 32 bytes), e.g. from pecron-monitor --setup.",
         "data": {
           "auth_key": "Auth key"
+        }
+      },
+      "pecron_local": {
+        "description": "Pick the Pecron Local entry for this power station. Its auth key is copied over without being shown.",
+        "data": {
+          "entry": "Pecron Local entry"
         }
       }
     },

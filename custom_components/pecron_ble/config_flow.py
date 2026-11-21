@@ -47,6 +47,30 @@ MANUAL_ADDRESS = "manual"
 MAC_RE = re.compile(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}")
 
 
+PECRON_LOCAL_DOMAIN = "pecron_local"
+
+
+def _norm_mac(value: str | None) -> str:
+    return (value or "").upper().replace(":", "").replace("-", "")
+
+
+def _same_station(device_key: str | None, ble_mac: str | None, address: str | None) -> bool:
+    """Is this Pecron Local entry the station at BLE ``address``?
+
+    An exact stored BLE MAC wins. Otherwise compare with the device key (the
+    Wi-Fi MAC): on an E300LFP the Wi-Fi and BLE MACs share the first four
+    bytes but differ after that (5037CD3A42F9 vs 50:37:CD:3A:2F:39), so the
+    prefix is all that can be compared.
+    """
+    addr = _norm_mac(address)
+    if len(addr) != 12:
+        return False
+    if _norm_mac(ble_mac) == addr:
+        return True
+    dk = _norm_mac(device_key)
+    return len(dk) == 12 and dk[:8] == addr[:8]
+
+
 def _is_pecron(info: BluetoothServiceInfoBleak) -> bool:
     return (info.name or "").startswith(BLE_NAME_PREFIX) or QUECTEL_MANUFACTURER_ID in info.manufacturer_data
 
@@ -162,7 +186,49 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
     # -- auth key -------------------------------------------------------------
 
     async def async_step_auth_method(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="auth_method", menu_options=["cloud", "manual"])
+        options = ["cloud", "manual"]
+        if self._pecron_local_keys():
+            options.insert(0, "pecron_local")
+        return self.async_show_menu(step_id="auth_method", menu_options=options)
+
+    def _pecron_local_keys(self) -> list[tuple[str, str, str | None, str | None]]:
+        """(title, auth_key, device_key, ble_mac) from Pecron Local (jordankurtz/ha-pecron-local) entries.
+
+        Pecron Local talks to the same station over Wi-Fi with the same
+        per-device auth key, so a working key there works over BLE too. The
+        key is read server-side and never shown to the user.
+        """
+        out = []
+        for entry in self.hass.config_entries.async_entries(PECRON_LOCAL_DOMAIN):
+            key = entry.data.get(CONF_AUTH_KEY)
+            if isinstance(key, str) and _decode_key(key) is not None:
+                out.append((entry.title, key, entry.data.get(CONF_DEVICE_KEY), entry.data.get("mac")))
+        return out
+
+    async def async_step_pecron_local(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        candidates = self._pecron_local_keys()
+        if user_input is not None:
+            chosen = [c for c in candidates if c[0] == user_input["entry"]]
+        else:
+            chosen = [c for c in candidates if _same_station(c[2], c[3], self._address)] or (
+                candidates if len(candidates) == 1 else []
+            )
+        if len(chosen) == 1:
+            title, key_b64, device_key, _mac = chosen[0]
+            if errors := await self._verify(_decode_key(key_b64)):
+                return self.async_show_form(
+                    step_id="pecron_local",
+                    data_schema=vol.Schema({vol.Required("entry", default=title): vol.In([c[0] for c in candidates])}),
+                    errors=errors,
+                )
+            data = {CONF_AUTH_KEY: key_b64}
+            if device_key:
+                data[CONF_DEVICE_KEY] = device_key
+            return await self._finish(data)
+        return self.async_show_form(
+            step_id="pecron_local",
+            data_schema=vol.Schema({vol.Required("entry"): vol.In([c[0] for c in candidates])}),
+        )
 
     async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -226,6 +292,9 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _from_cloud(self, device: CloudDevice) -> ConfigFlowResult:
         assert self._cloud is not None
+        if self._name in (None, self._address):
+            # E300LFP advertises no BLE name; the cloud's device name is friendlier.
+            self._name = device.name
         try:
             key_b64 = await self._cloud.auth_key(device)
         except CloudError as err:

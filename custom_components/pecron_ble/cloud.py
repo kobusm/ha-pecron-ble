@@ -37,6 +37,21 @@ class CloudDevice:
     device_key: str
 
 
+def describe_failure(body: dict) -> str:
+    """Summarise a failed cloud reply: status, code, message and field names (never values)."""
+    status = body.get("_http_status")
+    code = body.get("code", body.get("status"))
+    msg = body.get("msg") or body.get("message") or body.get("error")
+    fields = sorted(k for k in body if k != "_http_status")
+    parts = [f"HTTP {status}"]
+    if code is not None:
+        parts.append(f"code {code}")
+    if isinstance(msg, str) and msg:
+        parts.append(msg[:120])
+    parts.append(f"reply fields: {', '.join(fields) or 'none'}")
+    return "; ".join(parts)
+
+
 def login_params(email: str, password: str, domain: str, secret: str, rand: str | None = None) -> dict[str, str]:
     """Build the app's encrypted emailPwdLogin form."""
     rand = rand or "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
@@ -64,11 +79,17 @@ class PecronCloud:
             async with self._session.request(
                 method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=20), **kwargs
             ) as resp:
-                body = await resp.json(content_type=None)
-        except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError) as err:
+                status = resp.status
+                text = await resp.text()
+        except (aiohttp.ClientError, TimeoutError) as err:
             raise CloudError(f"{path}: {err}") from err
+        try:
+            body = json.loads(text)
+        except json.JSONDecodeError:
+            raise CloudError(f"{path}: HTTP {status}, non-JSON reply ({len(text)} bytes)") from None
         if not isinstance(body, dict):
-            raise CloudError(f"{path}: unexpected response")
+            raise CloudError(f"{path}: HTTP {status}, unexpected reply type {type(body).__name__}")
+        body.setdefault("_http_status", status)
         return body
 
     async def login(self, email: str, password: str) -> None:
@@ -111,7 +132,7 @@ class PecronCloud:
             data={"pk": device.product_key, "dk": device.device_key},
         )
         if body.get("code") != 200:
-            raise CloudError(f"cloud answered code {body.get('code')}: {body.get('msg') or 'no message'}")
+            raise CloudError(describe_failure(body))
         data = body.get("data")
         key = data.get("authKey") if isinstance(data, dict) else None
         if not isinstance(key, str) or not key:
