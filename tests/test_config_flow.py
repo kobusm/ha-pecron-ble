@@ -148,3 +148,33 @@ async def test_user_flow_only_passive_scanner_sees_it(hass: HomeAssistant, fake_
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "not_connectable"
     assert result["description_placeholders"] == {"addresses": ADDRESS}
+
+
+async def test_cloud_key_error_is_shown(hass: HomeAssistant, fake_device):
+    from custom_components.pecron_ble.cloud import CloudError
+
+    devices = [CloudDevice("E300LFP", "pk1", "12345678EEFF")]
+    result = await _to_menu(hass)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "cloud"})
+    with _cloud(devices) as cloud_cls:
+        cloud_cls.return_value.auth_key.side_effect = CloudError("cloud answered code 5032: No permission")
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDS)
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "auth_key_unavailable"
+    assert result["description_placeholders"] == {
+        "device": "E300LFP (12345678EEFF)",
+        "error": "cloud answered code 5032: No permission",
+    }
+
+
+async def test_cloud_key_wrong_length_is_explained(hass: HomeAssistant, fake_device):
+    import base64
+
+    devices = [CloudDevice("E300LFP", "pk1", "12345678EEFF")]
+    result = await _to_menu(hass)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "cloud"})
+    with _cloud(devices) as cloud_cls:
+        cloud_cls.return_value.auth_key.return_value = base64.b64encode(b"x" * 20).decode()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDS)
+    assert result["reason"] == "auth_key_unavailable"
+    assert result["description_placeholders"]["error"] == "the key decoded to 20 bytes, expected 16, 24 or 32"

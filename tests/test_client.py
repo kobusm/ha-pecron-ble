@@ -16,7 +16,7 @@ def fast_timeouts(monkeypatch):
     monkeypatch.setattr(c, "WRITE_RESULT_TIMEOUT", 0.5)
 
 
-def make(fake: FakePecron, **kw) -> c.PecronBleClient:
+def make(fake: FakePecron, key: bytes = AUTH_KEY, **kw) -> c.PecronBleClient:
     dev = MagicMock(address="AA:BB:CC:DD:EE:FF")
     dev.name = "QUEC_BLE_EEFF"
 
@@ -27,7 +27,7 @@ def make(fake: FakePecron, **kw) -> c.PecronBleClient:
 
     patcher = patch.object(c, "establish_connection", establish)
     patcher.start()
-    cli = c.PecronBleClient(dev, AUTH_KEY, **kw)
+    cli = c.PecronBleClient(dev, key, **kw)
     cli._patcher = patcher
     return cli
 
@@ -96,3 +96,14 @@ async def test_read_requires_connection():
 def test_rejects_bad_key_length():
     with pytest.raises(ValueError):
         c.PecronBleClient(MagicMock(), b"short")
+
+
+async def test_aes256_key_handshake_and_read():
+    key = bytes(range(32))
+    fake = FakePecron(key=key)
+    fake.session_key = key
+    cli = make(fake, key=key)
+    await cli.connect()
+    data = await cli.read_status()
+    assert data[1] == 87
+    cli._patcher.stop()

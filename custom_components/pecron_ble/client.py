@@ -27,6 +27,10 @@ _LOGGER = logging.getLogger(__name__)
 
 CHAR_UUID = "00009c40-0000-1000-8000-00805f9b34fb"
 
+# AES-128 is what's been seen in the wild; accept the other AES sizes too in
+# case some models' cloud returns a longer key.
+AES_KEY_SIZES = (16, 24, 32)
+
 HANDSHAKE_TIMEOUT = 8.0
 # Status replies trickle in as several indications over a few seconds.
 READ_TIMEOUT = 15.0
@@ -50,8 +54,8 @@ class PecronBleClient:
         on_update: Callable[[dict[int, Any]], None] | None = None,
         on_disconnect: Callable[[], None] | None = None,
     ) -> None:
-        if len(auth_key) != 16:
-            raise ValueError("auth key must decode to 16 bytes")
+        if len(auth_key) not in AES_KEY_SIZES:
+            raise ValueError("auth key must decode to 16, 24 or 32 bytes")
         self._device = ble_device
         self._key = auth_key
         self._on_update = on_update

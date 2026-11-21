@@ -27,7 +27,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .client import PecronAuthError, PecronBleClient, PecronError
+from .client import AES_KEY_SIZES, PecronAuthError, PecronBleClient, PecronError
 from .cloud import CloudAuthError, CloudDevice, CloudError, PecronCloud, match_device
 from .const import (
     BLE_NAME_PREFIX,
@@ -54,9 +54,20 @@ def _is_pecron(info: BluetoothServiceInfoBleak) -> bool:
 def _decode_key(text: str) -> bytes | None:
     try:
         key = base64.b64decode(text.strip(), validate=True)
-    except (binascii.Error, ValueError):
+    except (binascii.Error, ValueError, AttributeError):
         return None
-    return key if len(key) == 16 else None
+    return key if len(key) in AES_KEY_SIZES else None
+
+
+def _describe_key(text: object) -> str:
+    """Say what is wrong with a key the cloud returned, without echoing it."""
+    if not isinstance(text, str) or not text:
+        return "the key was empty"
+    try:
+        raw = base64.b64decode(text.strip(), validate=True)
+    except (binascii.Error, ValueError):
+        return f"the key was not base64 ({len(text)} characters)"
+    return f"the key decoded to {len(raw)} bytes, expected 16, 24 or 32"
 
 
 class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -218,11 +229,13 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             key_b64 = await self._cloud.auth_key(device)
         except CloudError as err:
-            _LOGGER.debug("auth key fetch failed: %s", err)
-            return self.async_abort(reason="auth_key_unavailable")
+            _LOGGER.warning("Auth key fetch failed for %s: %s", device.device_key, err)
+            return self._key_unavailable(device, str(err))
         key = _decode_key(key_b64)
         if key is None:
-            return self.async_abort(reason="auth_key_unavailable")
+            problem = _describe_key(key_b64)
+            _LOGGER.warning("Unusable auth key for %s: %s", device.device_key, problem)
+            return self._key_unavailable(device, problem)
         if errors := await self._verify(key):
             # Show the manual form with the error so the user can retry or paste.
             return self.async_show_form(
@@ -235,6 +248,12 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_PRODUCT_KEY: device.product_key,
             CONF_DEVICE_KEY: device.device_key,
         })
+
+    def _key_unavailable(self, device: CloudDevice, error: str) -> ConfigFlowResult:
+        return self.async_abort(
+            reason="auth_key_unavailable",
+            description_placeholders={"device": f"{device.name} ({device.device_key})", "error": error},
+        )
 
     async def _verify(self, key: bytes) -> dict[str, str]:
         """Log in over BLE once to prove the key works."""

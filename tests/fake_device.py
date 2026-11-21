@@ -31,7 +31,8 @@ class FakePecron:
     """Duck-types the bits of BleakClient the client uses."""
 
     def __init__(self, key: bytes = AUTH_KEY, mtu_chunk: int = 20) -> None:
-        self.key = key
+        self.key = key  # key the device checks the login against
+        self.session_key = AUTH_KEY  # key it encrypts the session with
         self.chunk = mtu_chunk
         self.is_connected = False
         self._cb = None
@@ -62,7 +63,7 @@ class FakePecron:
             self._cb(None, bytearray(raw[i : i + self.chunk]))
 
     def enc(self, data: bytes) -> bytes:
-        return p.aes_encrypt(AUTH_KEY, self.iv, data)
+        return p.aes_encrypt(self.session_key, self.iv, data)
 
     def _respond(self, f: p.Frame) -> None:
         if f.cmd == p.CMD_RANDOM_REQ:
@@ -74,6 +75,6 @@ class FakePecron:
             self.indicate(p.CMD_STATUS_ACK, self.enc(STATUS_A), f.packet_id)
             self.indicate(p.CMD_REPORT_PROPS, self.enc(STATUS_B), f.packet_id)
         elif f.cmd == p.CMD_WRITE_PROPS:
-            plain = p.aes_decrypt(AUTH_KEY, self.iv, f.payload)
+            plain = p.aes_decrypt(self.session_key, self.iv, f.payload)
             self.props.update(p.fields_to_dict(p.decode_fields(plain)))
             self.indicate(p.CMD_WRITE_RESULT, p.encode_int(1, 1 if self.reject_writes else 0), f.packet_id)

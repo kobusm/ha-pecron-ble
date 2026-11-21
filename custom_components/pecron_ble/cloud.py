@@ -111,8 +111,13 @@ class PecronCloud:
             data={"pk": device.product_key, "dk": device.device_key},
         )
         if body.get("code") != 200:
-            raise CloudError(f"getAuthKey failed: {body.get('code')} {body.get('msg', '')}")
-        return body["data"]["authKey"]
+            raise CloudError(f"cloud answered code {body.get('code')}: {body.get('msg') or 'no message'}")
+        data = body.get("data")
+        key = data.get("authKey") if isinstance(data, dict) else None
+        if not isinstance(key, str) or not key:
+            fields = sorted(data) if isinstance(data, dict) else type(data).__name__
+            raise CloudError(f"cloud answered OK but sent no authKey (data fields: {fields})")
+        return key
 
 
 def match_device(devices: list[CloudDevice], ble_name: str | None, address: str) -> CloudDevice | None:

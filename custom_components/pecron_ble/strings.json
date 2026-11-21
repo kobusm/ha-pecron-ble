@@ -4,11 +4,15 @@
     "step": {
       "user": {
         "description": "Pick the Pecron power station (advertises as QUEC_BLE_xxxx or with Quectel manufacturer data).",
-        "data": { "address": "Device" }
+        "data": {
+          "address": "Device"
+        }
       },
       "manual_address": {
         "description": "No Pecron power station was found automatically. Make sure it is switched on, within range of a Bluetooth adapter or active ESPHome Bluetooth proxy, and that the Pecron app on your phone is closed (the station accepts only one Bluetooth connection, and stops advertising while the app is connected).\n\nIf it still isn't found, enter its Bluetooth address. You can read it with a BLE scanner app such as nRF Connect.",
-        "data": { "address": "Bluetooth address (AA:BB:CC:DD:EE:FF)" }
+        "data": {
+          "address": "Bluetooth address (AA:BB:CC:DD:EE:FF)"
+        }
       },
       "bluetooth_confirm": {
         "description": "Set up {name}?"
@@ -22,19 +26,27 @@
       },
       "cloud": {
         "description": "Used once to read the device auth key. Nothing is stored except the key.",
-        "data": { "email": "Pecron app email", "password": "Password", "region": "Region" }
+        "data": {
+          "email": "Pecron app email",
+          "password": "Password",
+          "region": "Region"
+        }
       },
       "cloud_device": {
         "description": "Which device on your account is {name}?",
-        "data": { "device_key": "Device" }
+        "data": {
+          "device_key": "Device"
+        }
       },
       "manual": {
-        "description": "Base64 auth key (decodes to 16 bytes), e.g. from pecron-monitor --setup.",
-        "data": { "auth_key": "Auth key" }
+        "description": "Base64 auth key (decodes to 16, 24 or 32 bytes), e.g. from pecron-monitor --setup.",
+        "data": {
+          "auth_key": "Auth key"
+        }
       }
     },
     "error": {
-      "invalid_key_format": "Not a base64 string that decodes to 16 bytes.",
+      "invalid_key_format": "Not a base64 string that decodes to 16, 24 or 32 bytes.",
       "invalid_address": "Use the format AA:BB:CC:DD:EE:FF.",
       "invalid_auth": "The power station rejected this auth key.",
       "cannot_connect": "Could not connect over Bluetooth. Make sure it is in range and not connected to the Pecron app.",
@@ -46,57 +58,109 @@
     "abort": {
       "already_configured": "Device is already configured",
       "not_connectable": "Found a Pecron power station ({addresses}), but only a scanner that cannot connect sees it. ESPHome Bluetooth proxies must have active connections enabled (`bluetooth_proxy: active: true`), or move the station closer to a connectable adapter.",
-      "auth_key_unavailable": "The Pecron cloud did not return an auth key for this device.",
+      "auth_key_unavailable": "The Pecron cloud did not give a usable auth key for {device}: {error}",
       "reauth_successful": "Auth key updated"
     }
   },
   "selector": {
     "region": {
-      "options": { "na": "North America", "eu": "Europe", "cn": "China" }
+      "options": {
+        "na": "North America",
+        "eu": "Europe",
+        "cn": "China"
+      }
     }
   },
   "exceptions": {
-    "not_in_range": { "message": "Pecron {address} is not in Bluetooth range" }
+    "not_in_range": {
+      "message": "Pecron {address} is not in Bluetooth range"
+    }
   },
   "entity": {
     "sensor": {
-      "battery_voltage": { "name": "Battery voltage" },
-      "battery_current": { "name": "Battery current" },
-      "battery_temperature": { "name": "Battery temperature" },
-      "charger_temperature": { "name": "Charger temperature" },
-      "inverter_temperature": { "name": "Inverter temperature" },
-      "input_power": { "name": "Input power" },
-      "output_power": { "name": "Output power" },
-      "ac_input_power": { "name": "AC input power" },
-      "dc_input_power": { "name": "DC input power" },
-      "ac_output_power": { "name": "AC output power" },
-      "dc_output_power": { "name": "DC output power" },
-      "ac_output_voltage": { "name": "AC output voltage" },
-      "ac_output_frequency": { "name": "AC output frequency" },
-      "ac_output_power_factor": { "name": "AC output power factor" },
-      "time_to_empty": { "name": "Time to empty" },
-      "time_to_full": { "name": "Time to full" },
-      "fault_code": { "name": "Fault code" },
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "battery_current": {
+        "name": "Battery current"
+      },
+      "battery_temperature": {
+        "name": "Battery temperature"
+      },
+      "charger_temperature": {
+        "name": "Charger temperature"
+      },
+      "inverter_temperature": {
+        "name": "Inverter temperature"
+      },
+      "input_power": {
+        "name": "Input power"
+      },
+      "output_power": {
+        "name": "Output power"
+      },
+      "ac_input_power": {
+        "name": "AC input power"
+      },
+      "dc_input_power": {
+        "name": "DC input power"
+      },
+      "ac_output_power": {
+        "name": "AC output power"
+      },
+      "dc_output_power": {
+        "name": "DC output power"
+      },
+      "ac_output_voltage": {
+        "name": "AC output voltage"
+      },
+      "ac_output_frequency": {
+        "name": "AC output frequency"
+      },
+      "ac_output_power_factor": {
+        "name": "AC output power factor"
+      },
+      "time_to_empty": {
+        "name": "Time to empty"
+      },
+      "time_to_full": {
+        "name": "Time to full"
+      },
+      "fault_code": {
+        "name": "Fault code"
+      },
       "device_status": {
         "name": "Status",
         "state": {
-          "shut_down": "Shut down", "charging": "Charging", "dc_discharge": "DC discharge",
-          "ac_discharge": "AC discharge", "standby": "Standby", "conservation": "Conservation"
+          "shut_down": "Shut down",
+          "charging": "Charging",
+          "dc_discharge": "DC discharge",
+          "ac_discharge": "AC discharge",
+          "standby": "Standby",
+          "conservation": "Conservation"
         }
       },
       "charge_status": {
         "name": "Charge status",
         "state": {
-          "no_charge": "Not charging", "cascade_charging": "Cascade charging",
-          "balance_no_charge": "Balancing", "balanced_charging": "Balanced charging",
+          "no_charge": "Not charging",
+          "cascade_charging": "Cascade charging",
+          "balance_no_charge": "Balancing",
+          "balanced_charging": "Balanced charging",
           "no_connection": "No connection"
         }
       }
     },
     "switch": {
-      "ac_output": { "name": "AC output" },
-      "dc_output": { "name": "DC output" },
-      "ups_mode": { "name": "UPS mode" }
+      "ac_output": {
+        "name": "AC output"
+      },
+      "dc_output": {
+        "name": "DC output"
+      },
+      "ups_mode": {
+        "name": "UPS mode"
+      }
     }
   }
 }
