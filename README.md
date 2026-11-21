@@ -42,3 +42,7 @@ python3.14 -m venv .venv && .venv/bin/pip install pytest-homeassistant-custom-co
 ```
 
 `tests/fake_device.py` is a fake device that speaks the real protocol: handshake, AES, and indications split into 20-byte chunks. The client and integration tests run against it.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
