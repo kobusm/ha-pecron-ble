@@ -37,7 +37,7 @@ Entities are created only for data points your unit actually reports:
 ## Development
 
 ```bash
-python3.14 -m venv .venv && .venv/bin/pip install pytest-homeassistant-custom-component
+python3.14 -m venv .venv && .venv/bin/pip install -r requirements_test.txt
 .venv/bin/python -m pytest
 ```
 
