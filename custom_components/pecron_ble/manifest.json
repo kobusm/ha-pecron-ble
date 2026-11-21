@@ -1,7 +1,10 @@
 {
   "domain": "pecron_ble",
   "name": "Pecron (Bluetooth)",
-  "bluetooth": [{ "local_name": "QUEC_BLE_*", "connectable": true }],
+  "bluetooth": [
+    { "local_name": "QUEC_BLE_*", "connectable": true },
+    { "manufacturer_id": 21841, "connectable": true }
+  ],
   "codeowners": ["@kobusm"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
@@ -11,5 +14,5 @@
   "issue_tracker": "https://github.com/kobusm/ha-pecron-ble/issues",
   "loggers": ["bleak", "bleak_retry_connector"],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

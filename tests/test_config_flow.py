@@ -1,5 +1,5 @@
 """Config flow."""
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_USER
 from homeassistant.const import CONF_ADDRESS, CONF_EMAIL, CONF_PASSWORD
@@ -91,8 +91,60 @@ async def test_cloud_asks_which_device_when_ambiguous(hass: HomeAssistant, fake_
     assert result["data"][CONF_DEVICE_KEY] == "000000000002"
 
 
-async def test_user_flow_no_devices(hass: HomeAssistant, fake_device):
-    with patch("custom_components.pecron_ble.config_flow.async_discovered_service_info", return_value=[]):
+def _adv(address, name=None, mfg=None, connectable=True):
+    info = MagicMock(address=address, manufacturer_data=mfg or {}, connectable=connectable)
+    info.name = name
+    return info
+
+
+def _discovered(*infos):
+    return patch("custom_components.pecron_ble.config_flow.async_discovered_service_info", return_value=list(infos))
+
+
+async def test_user_flow_lists_name_and_manufacturer_matches(hass: HomeAssistant, fake_device):
+    infos = [
+        _adv("11:11:11:11:11:11", "QUEC_BLE_1111"),
+        _adv(ADDRESS, None, {0x5551: b"\x01"}),  # no name, Quectel mfg data only
+        _adv("22:22:22:22:22:22", "SomeSpeaker"),  # unrelated
+    ]
+    with _discovered(*infos):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    assert result["step_id"] == "user"
+    choices = result["data_schema"].schema[CONF_ADDRESS].container
+    assert set(choices) == {"11:11:11:11:11:11", ADDRESS, "manual"}
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ADDRESS: ADDRESS})
+    assert result["type"] is FlowResultType.MENU
+
+
+async def test_user_flow_nothing_found_falls_back_to_manual_address(hass: HomeAssistant, fake_device):
+    with _discovered():
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    assert result["step_id"] == "manual_address"
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ADDRESS: "nope"})
+    assert result["errors"] == {CONF_ADDRESS: "invalid_address"}
+
+    with patch("custom_components.pecron_ble.config_flow.async_ble_device_from_address", return_value=None):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ADDRESS: ADDRESS})
+    assert result["errors"] == {CONF_ADDRESS: "not_in_range"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADDRESS: ADDRESS.lower().replace(":", "-")}
+    )
+    assert result["type"] is FlowResultType.MENU
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "manual"})
+    with patch("custom_components.pecron_ble.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTH_KEY: AUTH_KEY_B64})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ADDRESS] == ADDRESS
+    assert result["title"] == NAME  # name taken from the BLE device
+
+
+async def test_user_flow_only_passive_scanner_sees_it(hass: HomeAssistant, fake_device):
+    with _discovered(_adv(ADDRESS, "QUEC_BLE_EEFF", connectable=False)):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    assert result["reason"] == "not_connectable"
+    assert result["description_placeholders"] == {"addresses": ADDRESS}

@@ -13,6 +13,10 @@ CONF_REGION: Final = "region"
 
 DEFAULT_SCAN_INTERVAL: Final = timedelta(seconds=30)
 BLE_NAME_PREFIX: Final = "QUEC_BLE_"
+# Quectel modules put manufacturer id 0x5551 ("QU") in their advertisement.
+# Matching on it too covers units that advertise a different name, and
+# passive scanners that never receive the scan response carrying the name.
+QUECTEL_MANUFACTURER_ID: Final = 0x5551
 
 # ---------------------------------------------------------------------------
 # TSL data points (numeric ids on the wire). Source: pecron-monitor TSL_TOP.

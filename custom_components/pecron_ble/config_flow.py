@@ -5,6 +5,7 @@ import base64
 import binascii
 from collections.abc import Mapping
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -28,9 +29,26 @@ from homeassistant.helpers.selector import (
 
 from .client import PecronAuthError, PecronBleClient, PecronError
 from .cloud import CloudAuthError, CloudDevice, CloudError, PecronCloud, match_device
-from .const import BLE_NAME_PREFIX, CONF_AUTH_KEY, CONF_DEVICE_KEY, CONF_PRODUCT_KEY, CONF_REGION, DOMAIN, REGIONS
+from .const import (
+    BLE_NAME_PREFIX,
+    CONF_AUTH_KEY,
+    CONF_DEVICE_KEY,
+    CONF_PRODUCT_KEY,
+    CONF_REGION,
+    DOMAIN,
+    QUECTEL_MANUFACTURER_ID,
+    REGIONS,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+MANUAL_ADDRESS = "manual"
+MAC_RE = re.compile(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}")
+
+
+def _is_pecron(info: BluetoothServiceInfoBleak) -> bool:
+    return (info.name or "").startswith(BLE_NAME_PREFIX) or QUECTEL_MANUFACTURER_ID in info.manufacturer_data
 
 
 def _decode_key(text: str) -> bytes | None:
@@ -58,7 +76,7 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self._address = discovery_info.address
-        self._name = discovery_info.name
+        self._name = discovery_info.name or discovery_info.address
         self.context["title_placeholders"] = {"name": self._name}
         return await self.async_step_bluetooth_confirm()
 
@@ -70,26 +88,65 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            self._address = user_input[CONF_ADDRESS]
-            self._name = self._discovered[self._address]
-            await self.async_set_unique_id(self._address, raise_on_progress=False)
-            self._abort_if_unique_id_configured()
-            return await self.async_step_auth_method()
+            if user_input[CONF_ADDRESS] == MANUAL_ADDRESS:
+                return await self.async_step_manual_address()
+            return await self._select_address(
+                user_input[CONF_ADDRESS], self._discovered[user_input[CONF_ADDRESS]]
+            )
 
         current = self._async_current_ids(include_ignore=False)
-        for info in async_discovered_service_info(self.hass, connectable=True):
-            if (info.name or "").startswith(BLE_NAME_PREFIX) and info.address not in current:
-                self._discovered[info.address] = info.name
+        seen_unconnectable: set[str] = set()
+        # connectable=False returns every advertisement, from active and passive scanners.
+        for info in async_discovered_service_info(self.hass, connectable=False):
+            if not _is_pecron(info) or info.address in current:
+                continue
+            if info.connectable:
+                self._discovered[info.address] = info.name or info.address
+            else:
+                seen_unconnectable.add(info.address)
+
         if not self._discovered:
-            return self.async_abort(reason="no_devices_found")
+            if seen_unconnectable - set(self._discovered):
+                return self.async_abort(
+                    reason="not_connectable",
+                    description_placeholders={"addresses": ", ".join(sorted(seen_unconnectable))},
+                )
+            return await self.async_step_manual_address()
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_ADDRESS): vol.In(
                     {addr: f"{name} ({addr})" for addr, name in self._discovered.items()}
+                    | {MANUAL_ADDRESS: "Enter address manually"}
                 )
             }),
         )
+
+    async def async_step_manual_address(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Fallback when discovery found nothing: take the MAC the user reads from the Pecron app or nRF Connect."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS].strip().upper().replace("-", ":")
+            if not MAC_RE.fullmatch(address):
+                errors[CONF_ADDRESS] = "invalid_address"
+            elif async_ble_device_from_address(self.hass, address, connectable=True) is None:
+                errors[CONF_ADDRESS] = "not_in_range"
+            else:
+                return await self._select_address(address, None)
+        return self.async_show_form(
+            step_id="manual_address",
+            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): str}),
+            errors=errors,
+        )
+
+    async def _select_address(self, address: str, name: str | None) -> ConfigFlowResult:
+        await self.async_set_unique_id(address, raise_on_progress=False)
+        self._abort_if_unique_id_configured()
+        self._address = address
+        if name is None and (ble := async_ble_device_from_address(self.hass, address, connectable=True)):
+            name = ble.name
+        self._name = name or address
+        return await self.async_step_auth_method()
 
     # -- auth key -------------------------------------------------------------
 

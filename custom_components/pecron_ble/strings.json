@@ -3,8 +3,12 @@
     "flow_title": "{name}",
     "step": {
       "user": {
-        "description": "Pick the Pecron power station (advertises as QUEC_BLE_xxxx).",
+        "description": "Pick the Pecron power station (advertises as QUEC_BLE_xxxx or with Quectel manufacturer data).",
         "data": { "address": "Device" }
+      },
+      "manual_address": {
+        "description": "No Pecron power station was found automatically. Make sure it is switched on, within range of a Bluetooth adapter or active ESPHome Bluetooth proxy, and that the Pecron app on your phone is closed (the station accepts only one Bluetooth connection, and stops advertising while the app is connected).\n\nIf it still isn't found, enter its Bluetooth address. You can read it with a BLE scanner app such as nRF Connect.",
+        "data": { "address": "Bluetooth address (AA:BB:CC:DD:EE:FF)" }
       },
       "bluetooth_confirm": {
         "description": "Set up {name}?"
@@ -31,6 +35,7 @@
     },
     "error": {
       "invalid_key_format": "Not a base64 string that decodes to 16 bytes.",
+      "invalid_address": "Use the format AA:BB:CC:DD:EE:FF.",
       "invalid_auth": "The power station rejected this auth key.",
       "cannot_connect": "Could not connect over Bluetooth. Make sure it is in range and not connected to the Pecron app.",
       "not_in_range": "The power station is not currently visible to any Bluetooth adapter or proxy.",
@@ -40,7 +45,7 @@
     },
     "abort": {
       "already_configured": "Device is already configured",
-      "no_devices_found": "No Pecron power stations found over Bluetooth.",
+      "not_connectable": "Found a Pecron power station ({addresses}), but only a scanner that cannot connect sees it. ESPHome Bluetooth proxies must have active connections enabled (`bluetooth_proxy: active: true`), or move the station closer to a connectable adapter.",
       "auth_key_unavailable": "The Pecron cloud did not return an auth key for this device.",
       "reauth_successful": "Auth key updated"
     }
