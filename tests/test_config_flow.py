@@ -49,6 +49,14 @@ async def test_manual_wrong_key(hass: HomeAssistant, fake_device):
     assert result["errors"] == {"base": "invalid_auth"}
 
 
+async def test_manual_key_on_adapter_without_indications(hass: HomeAssistant, fake_device):
+    fake_device.allow_cccd_write = False  # BlueZ adapter
+    result = await _to_menu(hass)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "manual"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTH_KEY: AUTH_KEY_B64})
+    assert result["errors"] == {"base": "needs_proxy"}
+
+
 def _cloud(devices, login_exc=None):
     cloud = AsyncMock()
     cloud.login.side_effect = login_exc

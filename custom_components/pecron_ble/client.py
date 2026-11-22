@@ -26,6 +26,12 @@ from . import protocol as p
 _LOGGER = logging.getLogger(__name__)
 
 CHAR_UUID = "00009c40-0000-1000-8000-00805f9b34fb"
+CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+# 0x9C40 offers both notify and indicate. The station only accepts writes from
+# a client that subscribed for *indications* (CCCD 0x0002); with notifications
+# (0x0001, which BlueZ's StartNotify always picks) every write fails with ATT
+# error 0x08 Insufficient Authorization.
+CCCD_INDICATE = b"\x02\x00"
 
 # AES-128 is what's been seen in the wild; accept the other AES sizes too in
 # case some models' cloud returns a longer key.
@@ -44,6 +50,15 @@ class PecronError(Exception):
 
 class PecronAuthError(PecronError):
     """Device rejected the auth key."""
+
+
+class PecronIndicationError(PecronError):
+    """Station refused writes because indications could not be enabled."""
+
+
+def _is_insufficient_authorization(err: BaseException) -> bool:
+    text = str(err).lower()
+    return "insufficient authorization" in text or "insufficient_authorization" in text
 
 
 class PecronBleClient:
@@ -68,6 +83,7 @@ class PecronBleClient:
         self._lock = asyncio.Lock()
         self._polling = False
         self.unknown_frames: list[str] = []
+        self.indications_forced: bool | None = None
 
     # -- properties -------------------------------------------------------
 
@@ -101,6 +117,7 @@ class PecronBleClient:
                     max_attempts=3,
                 )
                 await self._client.start_notify(CHAR_UUID, self._handle_indication)
+                self.indications_forced = await self._force_indications()
                 await self._handshake()
             except PecronError:
                 await self._disconnect_locked()
@@ -127,6 +144,27 @@ class PecronBleClient:
         self._iv = None
         if self._on_disconnect:
             self._on_disconnect()
+
+    async def _force_indications(self) -> bool:
+        """Rewrite the CCCD to 0x0002 so the station sees an indication subscriber.
+
+        Works through ESPHome proxies (and any backend that allows descriptor
+        writes). BlueZ refuses CCCD writes over D-Bus; that's logged and the
+        handshake is still attempted.
+        """
+        assert self._client is not None
+        char = self._client.services.get_characteristic(CHAR_UUID)
+        desc = char.get_descriptor(CCCD_UUID) if char is not None else None
+        if desc is None:
+            _LOGGER.debug("%s: no CCCD found on 0x9C40", self.address)
+            return False
+        try:
+            await self._client.write_gatt_descriptor(desc.handle, CCCD_INDICATE)
+        except (BleakError, asyncio.TimeoutError, OSError, NotImplementedError) as err:
+            _LOGGER.debug("%s: could not switch CCCD to indications: %s", self.address, err)
+            return False
+        _LOGGER.debug("%s: indications enabled", self.address)
+        return True
 
     async def _handshake(self) -> None:
         await self._send(p.CMD_RANDOM_REQ)
@@ -156,6 +194,12 @@ class PecronBleClient:
             # default ATT MTU; BlueZ/ESPHome fall back to a long write.
             await self._client.write_gatt_char(CHAR_UUID, frame, response=True)
         except (BleakError, asyncio.TimeoutError, OSError) as err:
+            if _is_insufficient_authorization(err) and not self.indications_forced:
+                raise PecronIndicationError(
+                    "station refused the write (insufficient authorization): it needs "
+                    "indications enabled, which this Bluetooth adapter can't do; "
+                    "connect through an ESPHome Bluetooth proxy"
+                ) from err
             raise PecronError(f"write failed: {err}") from err
 
     def _handle_indication(self, _sender: Any, data: bytearray) -> None:

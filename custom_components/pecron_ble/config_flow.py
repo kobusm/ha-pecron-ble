@@ -27,7 +27,13 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .client import AES_KEY_SIZES, PecronAuthError, PecronBleClient, PecronError
+from .client import (
+    AES_KEY_SIZES,
+    PecronAuthError,
+    PecronBleClient,
+    PecronError,
+    PecronIndicationError,
+)
 from .cloud import CloudAuthError, CloudDevice, CloudError, PecronCloud, match_device
 from .const import (
     BLE_NAME_PREFIX,
@@ -335,6 +341,9 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
             await client.connect()
         except PecronAuthError:
             return {"base": "invalid_auth"}
+        except PecronIndicationError as err:
+            _LOGGER.warning("%s", err)
+            return {"base": "needs_proxy"}
         except PecronError as err:
             _LOGGER.debug("verify failed: %s", err)
             return {"base": "cannot_connect"}

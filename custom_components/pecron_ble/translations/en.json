@@ -60,7 +60,8 @@
       "not_in_range": "The power station is not currently visible to any Bluetooth adapter or proxy.",
       "cloud_auth": "Pecron login failed. Check email, password and region.",
       "cloud_unreachable": "Could not reach the Pecron cloud.",
-      "no_cloud_devices": "No devices are bound to this Pecron account."
+      "no_cloud_devices": "No devices are bound to this Pecron account.",
+      "needs_proxy": "The power station refused the login because this Bluetooth adapter can't enable indications (a limit of the Linux Bluetooth stack). Connect through an ESPHome Bluetooth proxy near the station."
     },
     "abort": {
       "already_configured": "Device is already configured",

@@ -3,9 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from types import SimpleNamespace
 from typing import Any
 
+from bleak.exc import BleakError
+
+from custom_components.pecron_ble import client as c
 from custom_components.pecron_ble import protocol as p
+
+CCCD_HANDLE = 0x13
 
 AUTH_KEY = bytes(range(16))
 AUTH_KEY_B64 = base64.b64encode(AUTH_KEY).decode()
@@ -42,15 +48,40 @@ class FakePecron:
         self.props: dict[int, Any] = {}
         self.reject_writes = False
         self.disconnected_callback = None
+        # Like the real E300LFP: writes are refused unless the CCCD says
+        # "indicate". StartNotify (BlueZ) subscribes for notifications.
+        self.require_indications = True
+        self.allow_cccd_write = True  # False behaves like BlueZ over D-Bus
+        self.cccd = b"\x00\x00"
+        cccd = SimpleNamespace(uuid=c.CCCD_UUID, handle=CCCD_HANDLE)
+        char = SimpleNamespace(
+            uuid=c.CHAR_UUID,
+            get_descriptor=lambda uuid: cccd if uuid == c.CCCD_UUID else None,
+        )
+        self.services = SimpleNamespace(
+            get_characteristic=lambda uuid: char if uuid == c.CHAR_UUID else None
+        )
 
     # bleak API ------------------------------------------------------------
     async def start_notify(self, _uuid, cb) -> None:
         self._cb = cb
+        self.cccd = b"\x01\x00"  # notify is preferred when both are offered
+
+    async def write_gatt_descriptor(self, handle: int, data: bytes) -> None:
+        if not self.allow_cccd_write:
+            raise BleakError("[org.bluez.Error.NotPermitted] Write not permitted")
+        assert handle == CCCD_HANDLE
+        self.cccd = bytes(data)
 
     async def disconnect(self) -> None:
         self.is_connected = False
 
     async def write_gatt_char(self, _uuid, data: bytes, response: bool = True) -> None:
+        if self.require_indications and self.cccd != b"\x02\x00":
+            raise BleakError(
+                "(<BleakGATTProtocolErrorCode.INSUFFICIENT_AUTHORIZATION: 8>, "
+                "'GATT Protocol Error: Insufficient Authorization')"
+            )
         for frame in self.asm.feed(bytes(data)):
             assert frame.crc_ok
             self.writes.append(frame)

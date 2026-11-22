@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/kobusm/ha-pecron-ble/actions/workflows/tests.yml/badge.svg)](https://github.com/kobusm/ha-pecron-ble/actions/workflows/tests.yml)
 
-Local Bluetooth LE integration for Pecron portable power stations, written with the **E300LFP** in mind. It should also work on other models that advertise as `QUEC_BLE_xxxx`. There is no cloud polling: after a one-time key fetch, everything goes over BLE, either directly from the HA host's adapter or through an ESPHome Bluetooth proxy.
+Local Bluetooth LE integration for Pecron portable power stations, written with the **E300LFP** in mind. It should also work on other models that advertise as `QUEC_BLE_xxxx`. There is no cloud polling: after a one-time key fetch, everything goes over BLE through an **ESPHome Bluetooth proxy** (see below for why the HA host's own adapter usually can't be used).
 
 ## How it works
 
@@ -22,6 +22,20 @@ Protocol credit: [attractify-logan/pecron-monitor](https://github.com/attractify
 Copy `custom_components/pecron_ble` into your HA `config/custom_components/` folder (or add this repo to HACS as a custom repository), then restart HA. The station should be auto-discovered. If it isn't, go to **Settings → Devices & services → Add integration → Pecron (Bluetooth)**.
 
 Close the Pecron app before setup. A BLE peripheral accepts only one central at a time.
+
+### You need an ESPHome Bluetooth proxy
+
+The station only accepts writes from a client that subscribed to `0x9C40` for **indications** (CCCD `0x0002`). If the client subscribed for notifications, every write fails with ATT error 0x08 *Insufficient Authorization*. `0x9C40` offers both, and BlueZ (the Linux Bluetooth stack behind HA's built-in and USB adapters) always picks notifications. BlueZ also won't let an application write the CCCD itself. So on a Linux host adapter setup fails with *"…can't enable indications…"*.
+
+An [ESPHome Bluetooth proxy](https://esphome.io/components/bluetooth_proxy/) has no such limit: the integration rewrites the CCCD to `0x0002` over the proxy. Any ESP32 works. Put it near the station and set `active: true` so it can make connections:
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+bluetooth_proxy:
+  active: true
+```
 
 ## Entities
 

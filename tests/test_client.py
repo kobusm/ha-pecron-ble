@@ -38,6 +38,7 @@ async def test_handshake_and_read():
     await cli.connect()
     assert cli.is_connected
     assert [f.cmd for f in fake.writes] == [p.CMD_RANDOM_REQ, p.CMD_LOGIN_REQ]
+    assert fake.cccd == c.CCCD_INDICATE and cli.indications_forced is True
     data = await cli.read_status()
     # 0x0012 and 0x0014 replies are merged.
     assert data[1] == 87 and data[40] is True and data[38] is False
@@ -106,4 +107,26 @@ async def test_aes256_key_handshake_and_read():
     await cli.connect()
     data = await cli.read_status()
     assert data[1] == 87
+    cli._patcher.stop()
+
+
+async def test_bluez_cannot_enable_indications():
+    """BlueZ refuses CCCD writes; the station then refuses every write."""
+    fake = FakePecron()
+    fake.allow_cccd_write = False
+    cli = make(fake)
+    with pytest.raises(c.PecronIndicationError, match="ESPHome Bluetooth proxy"):
+        await cli.connect()
+    assert cli.indications_forced is False
+    assert not cli.is_connected and not fake.is_connected
+    cli._patcher.stop()
+
+
+async def test_station_that_accepts_notifications_still_works_without_cccd_write():
+    fake = FakePecron()
+    fake.allow_cccd_write = False
+    fake.require_indications = False
+    cli = make(fake)
+    await cli.connect()
+    assert cli.is_connected and cli.indications_forced is False
     cli._patcher.stop()
