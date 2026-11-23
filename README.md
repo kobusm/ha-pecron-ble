@@ -49,7 +49,7 @@ Entities are created only for data points your unit actually reports:
 ## E300LFP caveats
 
 - **AC output can turn off when a BLE session starts.** An E300LFP owner saw this in [pecron-monitor #3](https://github.com/attractify-logan/pecron-monitor/issues/3); it looks like a firmware side effect of the handshake. This integration keeps one connection open and only reconnects after a drop, which keeps handshakes rare. If AC was on before a drop and is off right after reconnecting, the integration logs a warning and increments `ac_flips_on_reconnect` in diagnostics. It does **not** turn AC back on by itself.
-- **Time remaining.** The firmware reports the same number for time-to-empty and time-to-full, so the integration shows whichever one matches the current power flow. The unit is assumed to be minutes; this hasn't been checked on a real unit yet.
+- **Time remaining.** The firmware reports the same number for time-to-empty and time-to-full, so the integration shows whichever one matches the current power flow. With nothing plugged in (0 W in and out), it goes by the sign of the battery current instead. The unit is assumed to be minutes; this hasn't been checked on a real unit yet.
 - **Data-point map.** The map is taken from larger models. If something your E300LFP reports isn't shown, download the device diagnostics: every raw data point is listed as `id:name`.
 
 ## Development

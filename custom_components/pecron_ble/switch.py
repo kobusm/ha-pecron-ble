@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import const as c
@@ -33,9 +33,18 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PecronConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        PecronSwitch(coordinator, d) for d in SWITCHES if (coordinator.data or {}).get(d.dp) is not None
-    )
+    added: set[str] = set()
+
+    # Same as sensors: data points can first appear after the initial poll.
+    @callback
+    def _add_new() -> None:
+        new = [d for d in SWITCHES if d.key not in added and (coordinator.data or {}).get(d.dp) is not None]
+        if new:
+            added.update(d.key for d in new)
+            async_add_entities(PecronSwitch(coordinator, d) for d in new)
+
+    _add_new()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
 class PecronSwitch(PecronEntity, SwitchEntity):

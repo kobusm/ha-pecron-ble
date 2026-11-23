@@ -21,7 +21,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import const as c
@@ -38,7 +38,15 @@ class PecronSensorDescription(SensorEntityDescription):
 
 
 def _net(d: dict[int, Any]) -> float:
-    return float(d.get(c.DP_TOTAL_IN) or 0) - float(d.get(c.DP_TOTAL_OUT) or 0)
+    """Sign says charging (+) or discharging (-).
+
+    Total input/output power is 0/0 when nothing is plugged in, but the pack
+    still drifts (self-consumption), so fall back to the battery current.
+    """
+    net = float(d.get(c.DP_TOTAL_IN) or 0) - float(d.get(c.DP_TOTAL_OUT) or 0)
+    if net == 0:
+        net = float(value_at(d, (c.DP_HOST_PACK, 3)) or 0)
+    return net
 
 
 W = dict(device_class=SensorDeviceClass.POWER, native_unit_of_measurement=UnitOfPower.WATT,
@@ -128,11 +136,23 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PecronConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        PecronSensor(coordinator, desc)
-        for desc in SENSORS
-        if any(value_at(coordinator.data, path) is not None for path in desc.paths)
-    )
+    added: set[str] = set()
+
+    # The first poll may hold only part of the data (the E300LFP sends its
+    # nested structs in a later report), so keep adding entities as new data
+    # points show up.
+    @callback
+    def _add_new() -> None:
+        new = [
+            d for d in SENSORS
+            if d.key not in added and any(value_at(coordinator.data, p) is not None for p in d.paths)
+        ]
+        if new:
+            added.update(d.key for d in new)
+            async_add_entities(PecronSensor(coordinator, d) for d in new)
+
+    _add_new()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
 class PecronSensor(PecronEntity, SensorEntity):

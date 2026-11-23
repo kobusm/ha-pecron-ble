@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pecron_ble import protocol as p
 from custom_components.pecron_ble.const import CONF_AUTH_KEY, DOMAIN
 from custom_components.pecron_ble.diagnostics import async_get_config_entry_diagnostics
 
@@ -44,6 +45,50 @@ async def test_setup_creates_only_reported_entities(hass: HomeAssistant, fake_de
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert not fake_device.is_connected
+
+
+def _struct(field_id: int, *children: bytes) -> bytes:
+    return ((field_id << 3) | 4).to_bytes(2, "big") + len(children).to_bytes(2, "big") + b"".join(children)
+
+
+async def test_entities_added_when_data_points_first_appear(hass: HomeAssistant, fake_device):
+    """The E300LFP's first poll is top-level only; nested data arrives later as a push."""
+    await _setup(hass)
+    ents = er.async_get(hass)
+    assert ents.async_get_entity_id("sensor", DOMAIN, f"{ADDRESS}_battery_voltage") is None
+
+    fake_device.indicate(
+        p.CMD_REPORT_PROPS,
+        fake_device.enc(
+            _struct(35, p.encode_int(1, 78), p.encode_int(2, 19.9, 1), p.encode_int(3, -0.03, 2),
+                    p.encode_int(4, 24), p.encode_int(5, 0))
+            + p.encode_bool(27, False)
+        ),
+    )
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.quec_ble_eeff_battery_voltage").state == "19.9"
+    assert hass.states.get("sensor.quec_ble_eeff_battery_current").state == "-0.03"
+    assert hass.states.get("switch.quec_ble_eeff_ups_mode").state == "off"
+    # Pushing the same data again doesn't create duplicates.
+    fake_device.indicate(p.CMD_REPORT_PROPS, fake_device.enc(p.encode_bool(27, True)))
+    await hass.async_block_till_done()
+    assert len(hass.states.async_entity_ids("switch")) == 3
+
+
+async def test_time_remaining_follows_battery_current_when_idle(hass: HomeAssistant, fake_device):
+    """No input or output power, but the pack is slowly discharging."""
+    await _setup(hass)
+    fake_device.indicate(
+        p.CMD_REPORT_PROPS,
+        fake_device.enc(
+            p.encode_int(4, 0) + p.encode_int(5, 0)
+            + _struct(35, p.encode_int(1, 78), p.encode_int(3, -0.03, 2))
+        ),
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.quec_ble_eeff_time_to_empty").state == "300"
+    assert hass.states.get("sensor.quec_ble_eeff_time_to_full").state == "unknown"
 
 
 async def test_switch_writes_to_device(hass: HomeAssistant, fake_device):
