@@ -67,11 +67,27 @@ class FakePecron:
         self._cb = cb
         self.cccd = b"\x01\x00"  # notify is preferred when both are offered
 
-    async def write_gatt_descriptor(self, handle: int, data: bytes) -> None:
-        if not self.allow_cccd_write:
-            raise BleakError("[org.bluez.Error.NotPermitted] Write not permitted")
-        assert handle == CCCD_HANDLE
-        self.cccd = bytes(data)
+    async def write_gatt_descriptor(self, desc, data: bytes) -> None:
+        # bleak >= 3.0 refuses CCCD writes in BleakClient itself, before the
+        # backend is reached, whatever the backend.
+        handle = desc if isinstance(desc, int) else desc.handle
+        if handle == CCCD_HANDLE:
+            raise ValueError(
+                "Cannot write to CCCD (0x2902) directly. Use start_notify() or stop_notify() instead."
+            )
+        raise AssertionError(f"unexpected descriptor write to {handle:#x}")
+
+    @property
+    def _backend(self) -> SimpleNamespace:
+        """The backend layer, which (on ESPHome proxies) does allow CCCD writes."""
+
+        async def write_gatt_descriptor(desc, data: bytes) -> None:
+            if not self.allow_cccd_write:
+                raise BleakError("[org.bluez.Error.NotPermitted] Write not permitted")
+            assert desc.handle == CCCD_HANDLE
+            self.cccd = bytes(data)
+
+        return SimpleNamespace(write_gatt_descriptor=write_gatt_descriptor)
 
     async def disconnect(self) -> None:
         self.is_connected = False

@@ -151,6 +151,10 @@ class PecronBleClient:
         Works through ESPHome proxies (and any backend that allows descriptor
         writes). BlueZ refuses CCCD writes over D-Bus; that's logged and the
         handshake is still attempted.
+
+        bleak >= 3.0 rejects CCCD writes in ``BleakClient.write_gatt_descriptor``
+        with a ValueError before the backend sees them, so the write goes to
+        the backend directly. The ESPHome backend passes it to the proxy as is.
         """
         assert self._client is not None
         char = self._client.services.get_characteristic(CHAR_UUID)
@@ -158,9 +162,11 @@ class PecronBleClient:
         if desc is None:
             _LOGGER.debug("%s: no CCCD found on 0x9C40", self.address)
             return False
+        backend = getattr(self._client, "_backend", None)
+        write = backend.write_gatt_descriptor if backend is not None else self._client.write_gatt_descriptor
         try:
-            await self._client.write_gatt_descriptor(desc.handle, CCCD_INDICATE)
-        except (BleakError, asyncio.TimeoutError, OSError, NotImplementedError) as err:
+            await write(desc, CCCD_INDICATE)
+        except (BleakError, asyncio.TimeoutError, OSError, NotImplementedError, ValueError) as err:
             _LOGGER.debug("%s: could not switch CCCD to indications: %s", self.address, err)
             return False
         _LOGGER.debug("%s: indications enabled", self.address)

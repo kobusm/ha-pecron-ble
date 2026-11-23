@@ -37,6 +37,8 @@ bluetooth_proxy:
   active: true
 ```
 
+[`esphome/pecron-ble-proxy.yaml`](esphome/pecron-ble-proxy.yaml) is a complete config for a generic ESP32-C3 board. Put `wifi_ssid`, `wifi_password`, `api_encryption_key` and `ota_password` in `esphome/secrets.yaml`, then flash it over USB with `esphome run esphome/pecron-ble-proxy.yaml`.
+
 ## Entities
 
 Entities are created only for data points your unit actually reports:

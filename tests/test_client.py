@@ -122,6 +122,17 @@ async def test_bluez_cannot_enable_indications():
     cli._patcher.stop()
 
 
+async def test_cccd_write_refused_by_bleak_without_backend_is_not_fatal():
+    """No reachable backend: bleak's own ValueError is handled like a refusal."""
+    fake = FakePecron()
+    fake.require_indications = False
+    cli = make(fake)
+    with patch.object(FakePecron, "_backend", None):
+        await cli.connect()
+    assert cli.is_connected and cli.indications_forced is False
+    cli._patcher.stop()
+
+
 async def test_station_that_accepts_notifications_still_works_without_cccd_write():
     fake = FakePecron()
     fake.allow_cccd_write = False

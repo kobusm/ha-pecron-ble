@@ -1,3 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
+
+# ESPHome proxy build artifacts and secrets
+esphome/.venv/
+esphome/.esphome/
+esphome/secrets.yaml
+esphome/.compile.log
+.DS_Store
