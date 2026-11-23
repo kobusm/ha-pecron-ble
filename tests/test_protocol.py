@@ -98,7 +98,27 @@ def test_login_payload_is_sha256_hex_in_field_2():
 
 @pytest.mark.parametrize(
     ("payload", "ok"),
-    [(b"", None), (p.encode_int(1, 0), True), (p.encode_int(1, 1), False), (b"\xff", False)],
+    [
+        (b"", None),
+        (p.encode_int(1, 0), True),  # 0x7036 write result (pecron-monitor #112)
+        (p.encode_int(1, 1), False),
+        (p.encode_int(3, 0), True),  # 0x7035 login result on the E300LFP
+        (p.encode_int(3, 1), False),
+        (p.encode_bytes(1, b"\x00"), False),
+        (b"\xff", False),
+    ],
 )
 def test_result_ok(payload, ok):
     assert p.result_ok(payload) is ok
+
+
+def test_real_e300lfp_handshake_frames():
+    """Indications captured from an E300LFP through an ESPHome proxy."""
+    random_resp = b"\xaa\xaa\x00\x19\x98\x00\x01p3\x00\x0b\x00\x102B4B87CF72EFEF6B"
+    login_resp = b"\xaa\xaa\x00\t\xc1\x00\x02p5\x00\x1a\x00\x00"
+    asm = p.FrameAssembler()
+    rnd, login = asm.feed(random_resp + login_resp)
+    assert rnd.crc_ok and rnd.cmd == p.CMD_RANDOM_RESP
+    assert p.random_from_frame(rnd) == "2B4B87CF72EFEF6B"
+    assert login.crc_ok and login.cmd == p.CMD_LOGIN_RESP
+    assert p.result_ok(login.payload) is True

@@ -117,7 +117,7 @@ class FakePecron:
             self.indicate(p.CMD_RANDOM_RESP, p.encode_bytes(1, RANDOM.encode()), f.packet_id)
         elif f.cmd == p.CMD_LOGIN_REQ:
             ok = f.payload == p.login_payload(self.key, RANDOM)
-            self.indicate(p.CMD_LOGIN_RESP, p.encode_int(1, 0 if ok else 1), f.packet_id)
+            self.indicate(p.CMD_LOGIN_RESP, p.encode_int(3, 0 if ok else 1), f.packet_id)  # id 3 like the E300LFP
         elif f.cmd == p.CMD_READ_STATUS:
             self.indicate(p.CMD_STATUS_ACK, self.enc(STATUS_A), f.packet_id)
             self.indicate(p.CMD_REPORT_PROPS, self.enc(STATUS_B), f.packet_id)

@@ -339,7 +339,8 @@ class PecronConfigFlow(ConfigFlow, domain=DOMAIN):
         client = PecronBleClient(ble_device, key)
         try:
             await client.connect()
-        except PecronAuthError:
+        except PecronAuthError as err:
+            _LOGGER.debug("verify: %s", err)
             return {"base": "invalid_auth"}
         except PecronIndicationError as err:
             _LOGGER.warning("%s", err)

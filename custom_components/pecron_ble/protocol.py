@@ -346,9 +346,11 @@ def random_from_frame(frame: Frame) -> str | None:
 def result_ok(payload: bytes) -> bool | None:
     """Interpret a 0x7035 / 0x7036 result payload.
 
-    Success is a single number field id 1 == 0 (pecron-monitor #112). An
-    empty payload is treated as "unknown" (None) because some firmware sends
-    a bare 0x7035 on successful login.
+    Success is a single number field equal to 0. The field id differs by
+    command: 0x7036 uses id 1 (pecron-monitor #112), while the E300LFP
+    answers a good login (0x7035) with id 3 = 0. An empty payload is treated
+    as "unknown" (None) because some firmware sends a bare 0x7035 on
+    successful login.
     """
     if not payload:
         return None
@@ -356,4 +358,4 @@ def result_ok(payload: bytes) -> bool | None:
         fields = decode_fields(payload)
     except ProtocolError:
         return False
-    return len(fields) == 1 and fields[0].id == 1 and fields[0].value == 0
+    return len(fields) == 1 and fields[0].type == T_NUMBER and fields[0].value == 0
